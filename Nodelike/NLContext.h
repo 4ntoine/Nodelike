@@ -17,25 +17,25 @@
 
 #import <JavaScriptCore/JavaScriptCore.h>
 
-#import "uv.h"
+//#import "uv.h"
+@class uv_loop_t;
 
 @interface NLContext : JSContext
 
 #pragma mark Public API
 
++ (NSMutableDictionary*) getEnv;
++ (NSMutableArray*) getArgs;
 + (void)attachToContext:(JSContext *)context;
 
 #if TARGET_OS_IPHONE
 + (void)attachToWebView:(UIWebView *)webView;
 #endif
 
-+ (uv_loop_t *)eventLoopInContext:(JSContext *)context;
++ (uv_loop_t *)eventLoop;
 
-+ (void)runEventLoopSyncInContext:(JSContext *)context;
-+ (void)runEventLoopAsyncInContext:(JSContext *)context;
-
-- (void)runProcessAsyncQueue;
-+ (void)runProcessAsyncQueue:(JSContext *)context;
++ (void)runEventLoopSync;
++ (void)runEventLoopAsync;
 
 - (int)emitExit;
 + (int)emitExit:(JSContext *)context;
