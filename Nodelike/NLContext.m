@@ -19,8 +19,6 @@
 
 #import "NLAsync.h"
 
-#import "NLTickInfo.h"
-
 @implementation NLContext
 
 static JSValue *process;
@@ -28,18 +26,6 @@ static NSMutableDictionary *_processEnv;
 static NSMutableArray *_processArgs;
 
 #pragma mark - JSContext
-
-- (id)init {
-    self = [super init];
-    return self;
-}
-
-- (id)initWithVirtualMachine:(JSVirtualMachine *)virtualMachine {
-    self = [super initWithVirtualMachine:virtualMachine];
-    return self;
-}
-
-#pragma mark - Scope Setup
 
 + (NSMutableDictionary*) getEnv {
     if (_processEnv == nil)
@@ -55,16 +41,30 @@ static NSMutableArray *_processArgs;
     return _processArgs;
 }
 
+- (id)initWithVirtualMachine:(JSVirtualMachine *)virtualMachine {
+    self = [super initWithVirtualMachine:virtualMachine];
+    return self;
+}
+
+#pragma mark - Scope Setup
+
 + (void)attachToContext:(JSContext *)context {
+    
+    uv_loop_t *eventLoop = uv_loop_new();
+    [context.virtualMachine nodelikeSet:&env_event_loop toValue:[NSValue valueWithPointer:eventLoop]];
     
     uv_check_t *immediate_check_handle = malloc(sizeof(uv_check_t));
     uv_idle_t  *immediate_idle_handle  = malloc(sizeof(uv_idle_t));
-    uv_check_init(NLContext.eventLoop, immediate_check_handle);
+    
+    immediate_check_handle->data = (__bridge void *)(context);
+    uv_check_init(eventLoop, immediate_check_handle);
     uv_unref((uv_handle_t *)immediate_check_handle);
-    uv_idle_init(NLContext.eventLoop, immediate_idle_handle);
+
+    uv_idle_init(eventLoop, immediate_idle_handle);
 
 #ifdef DEBUG
     context.exceptionHandler = ^(JSContext *ctx, JSValue *e) {
+    ctx.exception = e;
         NSLog(@"EXC: %@; line: %@, stack: %@", e, [e valueForProperty:@"line"], [e valueForProperty:@"stack"]);
     };
 #endif
@@ -78,9 +78,10 @@ static NSMutableArray *_processArgs;
         @"moduleLoadList": @[]
     } inContext:context];
     
+    JSValue __weak *weakProcess = process;
+    
     process[@"resourcePath"]      = NLContext.resourcePath;
     process[@"env"][@"NODE_PATH"] = [NLContext.resourcePath stringByAppendingString:@"/node_modules"];
-    
     // used in Hrtime() below
 #define NANOS_PER_SEC 1000000000
 
@@ -97,7 +98,8 @@ static NSMutableArray *_processArgs;
             uint64_t nanos   = [offset valueAtIndex:1].toInt32;
             t -= (seconds * NANOS_PER_SEC) + nanos;
         }
-        return @[[NSNumber numberWithUnsignedInt:t / NANOS_PER_SEC], [NSNumber numberWithUnsignedInt:t % NANOS_PER_SEC]];
+        return @[[NSNumber numberWithUnsignedInt:(unsigned)(t / NANOS_PER_SEC)],
+                 [NSNumber numberWithUnsignedInt:(unsigned)(t % NANOS_PER_SEC)]];
     };
     
     process[@"reallyExit"] = ^(NSNumber *code) {
@@ -118,16 +120,14 @@ static NSMutableArray *_processArgs;
     
     process[@"_setupAsyncListener"] = ^(JSValue *o, JSValue *r, JSValue *l, JSValue *u) {
         [NLAsync setupAsyncListener:o run:r load:l unload:u];
-        [process deleteProperty:@"_setupAsyncListener"];
+        [weakProcess deleteProperty:@"_setupAsyncListener"];
     };
 
-    process[@"_setupNextTick"]      = ^(JSValue *obj, JSValue *func) {
+    process[@"_setupNextTick"] = ^(JSValue *obj, JSValue *func) {
         assert(obj.isObject);
         assert(func.isObject);
-        [NLTickInfo initObject:obj];
-        [NLTickInfo setObject:obj inContext:context];
-        [NLTickInfo setCallback:func inContext:context];
-        [process deleteProperty:@"_setupNextTick"];
+        [NLAsync setupNextTick:obj func:func];
+        [weakProcess deleteProperty:@"_setupNextTick"];
     };
     
     id getNeedImmediateCallback = ^{
@@ -176,17 +176,11 @@ static NSMutableArray *_processArgs;
     context[@"COUNTER_HTTP_CLIENT_REQUEST"]         = noop;
     context[@"COUNTER_HTTP_CLIENT_RESPONSE"]        = noop;
     
-    [context evaluateScript:@"Error.captureStackTrace = function (value) { return; };"];
+    [context evaluateScript:@"Error.captureStackTrace = function (e) { e.stack = 'Trace: ' + e.message };"];
     [context evaluateScript:@"Number.isFinite = function (value) { return typeof value === 'number' && isFinite(value); };"];
     
     JSValue *constructor = [context evaluateScript:[NLNatives source:@"node"]];
     [constructor callWithArguments:@[process]];
-    
-    context[@"console"] = @{
-                            @"log": ^ { NSLog(@"stdio: %@", [JSContext currentArguments]); },
-                            @"error": ^{ NSLog(@"stderr: %@", [JSContext currentArguments]); }
-                            };
-    
 }
 
 #if TARGET_OS_IPHONE
@@ -197,8 +191,8 @@ static NSMutableArray *_processArgs;
 
 #pragma mark - Event Handling
 
-+ (uv_loop_t *)eventLoop {
-    return uv_default_loop();
++ (uv_loop_t *)eventLoopInContext:(JSContext *)context {
+    return ((NSValue *)[context.virtualMachine nodelikeGet:&env_event_loop]).pointerValue;
 }
 
 static dispatch_queue_t dispatchQueue () {
@@ -210,16 +204,24 @@ static dispatch_queue_t dispatchQueue () {
     return queue;
 }
 
-+ (void)runEventLoopSync {
-    dispatch_sync(dispatchQueue(), ^{
-        uv_run(NLContext.eventLoop, UV_RUN_DEFAULT);
++ (void)runEventLoopSyncInContext:(JSContext *)context {
+    //dispatch_sync(dispatchQueue(), ^{
+    uv_run([NLContext eventLoopInContext:context], UV_RUN_DEFAULT);
+    //});
+}
+
++ (void)runEventLoopAsyncInContext:(JSContext *)context {
+    dispatch_async(dispatchQueue(), ^{
+        uv_run([NLContext eventLoopInContext:context], UV_RUN_DEFAULT);
     });
 }
 
-+ (void)runEventLoopAsync {
-    dispatch_async(dispatchQueue(), ^{
-        uv_run(NLContext.eventLoop, UV_RUN_DEFAULT);
-    });
+- (void)runProcessAsyncQueue {
+    [NLContext runProcessAsyncQueue:self];
+}
+
++ (void)runProcessAsyncQueue:(JSContext *)context {
+    [NLAsync makeGlobalCallback:nil fromObject:[context.virtualMachine nodelikeGet:&env_process_object] withArguments:nil];
 }
 
 - (int)emitExit {
@@ -247,7 +249,7 @@ static dispatch_queue_t dispatchQueue () {
 }
 
 static void CheckImmediate(uv_check_t *handle, int status) {
-    JSContext *context  = JSContext.currentContext;
+    JSContext *context  = (__bridge JSContext *)(handle->data);
     JSValue   *process  = [context.virtualMachine nodelikeGet:&env_process_object];
     JSValue   *callback = [process valueForProperty:@"_immediateCallback"];
     [NLAsync makeGlobalCallback:callback fromObject:process withArguments:@[]];
