@@ -23,6 +23,8 @@
 
 #pragma mark Public API
 
++ (NSMutableDictionary*) getEnv;
++ (NSMutableArray*) getArgs;
 + (void)attachToContext:(JSContext *)context;
 
 #if TARGET_OS_IPHONE

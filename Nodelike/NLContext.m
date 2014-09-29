@@ -23,17 +23,33 @@
 
 @implementation NLContext
 
+static JSValue *process;
+static NSMutableDictionary *_processEnv;
+static NSMutableArray *_processArgs;
+
 #pragma mark - JSContext
+
++ (NSMutableDictionary*) getEnv {
+    if (_processEnv == nil)
+        _processEnv = [NSMutableDictionary dictionaryWithDictionary: NSProcessInfo.processInfo.environment];
+        
+    return _processEnv;
+}
+
++ (NSMutableArray*) getArgs {
+    if (_processArgs == nil)
+        _processArgs = [[NSMutableArray alloc] init];
+        
+    return _processArgs;
+}
 
 - (id)init {
     self = [super init];
-    [NLContext attachToContext:self];
     return self;
 }
 
 - (id)initWithVirtualMachine:(JSVirtualMachine *)virtualMachine {
     self = [super initWithVirtualMachine:virtualMachine];
-    [NLContext attachToContext:self];
     return self;
 }
 
@@ -53,10 +69,10 @@
     };
 #endif
     
-    JSValue *process = [JSValue valueWithObject:@{
+    process = [JSValue valueWithObject:@{
         @"platform": @"darwin",
-        @"argv":     @[],
-        @"env":      NSProcessInfo.processInfo.environment,
+        @"argv":     [self getArgs],
+        @"env":      [self getEnv],
         @"execPath": NSBundle.mainBundle.executablePath,
         @"_asyncFlags": @{},
         @"moduleLoadList": @[]
