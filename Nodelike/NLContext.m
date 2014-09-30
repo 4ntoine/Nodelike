@@ -26,6 +26,7 @@
 static JSValue *process;
 static NSMutableDictionary *_processEnv;
 static NSMutableArray *_processArgs;
+static NSString *_dirname;
 
 #pragma mark - JSContext
 
@@ -41,6 +42,19 @@ static NSMutableArray *_processArgs;
         _processArgs = [[NSMutableArray alloc] init];
         
     return _processArgs;
+}
+
++ (void) setDirName: (NSString*)dirname {
+    _dirname = dirname;
+}
+
+- (void) setConsoleLoggerForOut:(id)outLogger andErr:(id)errLogger {
+    self[@"console"] = @{ @"log": outLogger, @"error": errLogger };
+}
+
+- (void) setStdOutLoggerForOut: (id)outLogger andErr: (id) errLogger {
+    self[@"process"][@"stdout"] = @{ @"write": outLogger };
+    self[@"process"][@"stderr"] = @{ @"write": errLogger };
 }
 
 - (id)init {
@@ -187,6 +201,7 @@ static NSMutableArray *_processArgs;
                             @"error": ^{ NSLog(@"stderr: %@", [JSContext currentArguments]); }
                             };
     
+    context[@"__dirname"] = [JSValue valueWithObject:_dirname inContext:context];
 }
 
 #if TARGET_OS_IPHONE

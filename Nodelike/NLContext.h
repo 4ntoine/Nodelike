@@ -25,6 +25,10 @@
 
 + (NSMutableDictionary*) getEnv;
 + (NSMutableArray*) getArgs;
++ (void) setDirName: (NSString*)dirname;
+- (void) setConsoleLoggerForOut: (id)outLogger andErr: (id) errLogger;
+- (void) setStdOutLoggerForOut: (id)outLogger andErr: (id) errLogger;
+
 + (void)attachToContext:(JSContext *)context;
 
 #if TARGET_OS_IPHONE
