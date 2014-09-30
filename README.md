@@ -44,7 +44,8 @@ Apache Cordova is available for multiple platforms, but when focussing on the iO
 ## What's working right now
 
 - `console.log()`
-- `process`: `.argv`, `.env`, `.exit()`, `.nextTick()`
+- `process`: `.argv`, `.env`, `.exit()`, `.nextTick()`, `.stdout.write()`, `.stderr.write()`
+-  `__dirname`
 - `require()`
 - `fs`
 - `net`
