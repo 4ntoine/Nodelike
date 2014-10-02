@@ -49,6 +49,48 @@ static JSValue *Stats = nil;
         return fireReq(req, async); \
     } while (0)
 
+
+- (JSValue *)writeStringTo:(NSNumber *)file source:(NSString *)source offset:(JSValue *)off length:(JSValue *)len pos:(JSValue *)pos callback:(JSValue *)cb {
+    
+    char * cString = malloc(sizeof(char)*(source.length + 1));
+    strcpy(cString, source.UTF8String);
+    cString[source.length] = '\0';
+    
+    char const *buf = cString;
+    
+    unsigned int buffer_length = [source length];
+    unsigned int length   = [len isUndefined] ? buffer_length : [len toUInt32];
+    unsigned int position = [pos isUndefined] ?             0 : [pos toUInt32];
+    
+    call(write, cb, nil, file.intValue, buf, length, position);
+    
+}
+
+- (JSValue *)writeBufferTo:(NSNumber *)file source:(JSValue *)source offset:(JSValue *)off length:(JSValue *)len pos:(JSValue *)pos callback:(JSValue *)cb {
+    /*
+    NSString *src = [source toString];
+    char * cString = malloc(sizeof(char)*(src.length + 1));
+    strcpy(cString, src.UTF8String);
+    cString[src.length] = '\0';
+    
+    char const *buf = cString;
+    
+    unsigned int buffer_length = [source[@"length"] toUInt32];
+    unsigned int length   = [len isUndefined] ? buffer_length : [len toUInt32];
+    unsigned int position = [pos isUndefined] ?             0 : [pos toUInt32];
+    
+    call(write, cb, nil, file.intValue, buf, length, position);
+     */
+    
+    NSUInteger buffer_length = [NLBuffer getLength:source];
+    
+    char const *buf = [NLBuffer getData:source ofSize:buffer_length];
+    unsigned int length   = [len isUndefined] ? buffer_length : [len toUInt32];
+    unsigned int position = [pos isUndefined] ?             0 : [pos toUInt32];
+    
+    call(write, cb, nil, file.intValue, buf, length, position);
+}
+
 - (JSValue *)open:(longlived NSString *)path flags:(NSNumber *)flags mode:(NSNumber *)mode callback:(JSValue *)cb {
     call(open, cb, nil, path.UTF8String, flags.intValue, mode.intValue);
 }
@@ -60,7 +102,7 @@ static JSValue *Stats = nil;
 - (JSValue *)read:(NSNumber *)file to:(JSValue *)target offset:(JSValue *)off length:(JSValue *)len pos:(JSValue *)pos callback:(JSValue *)cb {
     unsigned int buffer_length = [target[@"length"] toUInt32];
     unsigned int length   = [len isUndefined] ? buffer_length : [len toUInt32];
-    unsigned int position = [pos isUndefined] ?             0 : [pos toUInt32];
+    unsigned int position = ( [pos isUndefined] || ([pos toInt32] < 0) ) ?  0 : [pos toUInt32];
     call(read, cb, ^(uv_fs_t *req) {
         [NLBuffer write:req->buf toBuffer:target atOffset:off withLength:len];
     }, file.intValue, malloc(length), length, position);
