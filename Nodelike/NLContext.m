@@ -27,6 +27,8 @@ static JSValue *process;
 static NSMutableDictionary *_processEnv;
 static NSMutableArray *_processArgs;
 static NSString *_dirname;
+static NSString *_resourcePath;
+static NSString *_nodePath;
 
 #pragma mark - JSContext
 
@@ -55,6 +57,14 @@ static NSString *_dirname;
 - (void) setStdOutLoggerForOut: (id)outLogger andErr: (id) errLogger {
     self[@"process"][@"stdout"] = @{ @"write": outLogger };
     self[@"process"][@"stderr"] = @{ @"write": errLogger };
+}
+
++ (void) setResourcePath: (NSString*)path {
+    _resourcePath = path;
+}
+
++ (void) setNodePath: (NSString*)path {
+    _nodePath = path;
 }
 
 - (id)init {
@@ -92,8 +102,8 @@ static NSString *_dirname;
         @"moduleLoadList": @[]
     } inContext:context];
     
-    process[@"resourcePath"]      = NLContext.resourcePath;
-    process[@"env"][@"NODE_PATH"] = [NLContext.resourcePath stringByAppendingString:@"/node_modules"];
+    process[@"resourcePath"]      = [self resourcePath];
+    process[@"env"][@"NODE_PATH"] = [self nodePath];
     
     // used in Hrtime() below
 #define NANOS_PER_SEC 1000000000
@@ -202,6 +212,8 @@ static NSString *_dirname;
                             };
     
     context[@"__dirname"] = [JSValue valueWithObject:_dirname inContext:context];
+    
+//    context[@"module"] = [JSValue valueWithUInt32:2 inContext:context]; // fakse value just to make check 'require.main === module' false
 }
 
 #if TARGET_OS_IPHONE
@@ -257,8 +269,12 @@ static dispatch_queue_t dispatchQueue () {
 
 #pragma mark - Helpers
 
-+ (NSString *)resourcePath {
-    return [NSBundle bundleForClass:NLContext.class].resourcePath;
++ (NSString *) resourcePath {
+    return  _resourcePath != nil ? _resourcePath : [NSBundle bundleForClass:NLContext.class].resourcePath;
+}
+
++ (NSString *) nodePath {
+    return _nodePath != nil ? _nodePath : [[self resourcePath] stringByAppendingString:@"/node_modules"];
 }
 
 static void CheckImmediate(uv_check_t *handle, int status) {

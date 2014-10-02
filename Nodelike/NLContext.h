@@ -44,5 +44,7 @@
 + (int)emitExit:(JSContext *)context;
 
 + (NSString *)resourcePath;
++ (void) setResourcePath: (NSString*)path;
++ (void) setNodePath: (NSString*)path; // for searching modules
 
 @end
